@@ -1,164 +1,127 @@
-![header_image](images/ZonBot.jpg)
-# Easier Buying with ZONBOT: 
-## Saving time and making purchasing decisions simpler with Amazon's ChatBot
-
-### Table of Contents
-
-1. [Contributors](#contributors)
-2. [Executive Summary](#executive-summary)
-3. [Project Objectives](#project-objectives)
-4. [Purpose For Our-AI Powered Chatbot](#purpose-for-our-ai-powered-chatbot)
-5. [Design and Development](#design-and-development)
-6. [Modeling Process](#modeling-process)
-7. [Modeling Optimazation](#modeling-optimization)
-8. [Running Instructions](#running-instructions)
-
-### Contributors
-
-Contributors to the project:
-* **Deborah Aina (Advisor)**
-* **Cameron Keplinger**
-* **Eshumael Manhanzva**
-* **Luther Johnson**
-* **Saurabh Pratap Singh**
-* **Sowmya Shetty**
-* **Valarie Miller**
-
-### Executive Summary 
-
-This project features a chatbot assistant built with Streamlit, designed to serve as a recommendation engine for home and kitchen products on Amazon. It uses content-based filtering, leveraging Amazon reviews to suggest products tailored to user preferences. The assistant addresses the challenge of browsing countless products and reviews by streamlining the decision-making process—saving time and offering more relevant recommendations. The solution includes a Question-and-Answer model integrated with a large language model (LLM), enabling a conversational interface that enhances the shopping experience through intelligent, review-based suggestions.
-
-* **Transformer Neural Network:** The foundational architecture used for natural language processing tasks.
-* **Chatbot Assistant (Built with Streamlit):** A user-friendly interface that allows interactive conversations and product recommendations.
-* **DistilBERT – Question and Answering Model:** A lightweight transformer model used to extract relevant information from a subset of Amazon review data.
-* **Large Language Model (LLM) – Mistral with Prompt Engineering:** Processes raw Amazon review data using tailored prompts to generate accurate and context-aware responses.
-* **Sentence-Transformer LML6 – Semantic Similarity Model:** Computes sentence embeddings to identify and match semantically similar Amazon reviews for enhanced recommendation accuracy.
+import re
+import os
+import numpy as np
+import faiss
+import pandas as pd
+from sentence_transformers import SentenceTransformer, losses
+from sentence_transformers import InputExample
+from torch.utils.data import DataLoader
+import torch
+from sklearn.metrics.pairwise import cosine_similarity
+import streamlit as st
+from langchain_community.vectorstores import FAISS
 
 
-### Project Objectives
-#### How does your advanced machine learning approach solve this real-world problem?:
-Our Machine Learning approach addresses the challenge of finding the right product by eliminating the need to sift through hundreds of listings and reviews, saving time, and delivering more relevant, personalized recommendations.
-#### The Dataset Details:
-* AmazonHomeKitchenReviews.CSV
-* Data source is https://amazon-reviews-2023.github.io/#grouped-by-category
-* 754,079 Total Records with 18 columns
-* Categories: 
-  * Kids Home Store
-  * Valentines Day in Home
-  * Bath
-  * Bedding
-  * Cosmetic Organizers
-  * Dorm Room HQ
-  * Event & Party Supplies
-  * Furniture
-  * Heating, Cooling & Air Quality
-  * Home and Furniture Made in Italy
-  * Home Decor Products
-  * Irons & Steamers
-  * Kitchen & Dining
-  * Seasonal Decor
-  * Storage & Organization
-  * Vacuums & Floor Care
-  * Wall Art
-  * Small Appliance Parts
+# Load your fine-tuned model once
+print(os.listdir("Resources/amazon-qa-model-MultipleNegativesRankingLoss"))#great it works
+model_path = os.path.join("Resources/amazon-qa-model-MultipleNegativesRankingLoss/amazon-qa-model-MultipleNegativesRankingLoss")
 
-### Purpose For Our AI-Powered Chatbot
 
-1. The chatbot enhances your Amazon shopping experience with AI-powered assistance
-2. Delivers top product recommendations with summarized reviews
-3. Identifies products within your desired price range (lowest to highest)
-4. Filters items based on your preferred features (e.g., color, size, brand)
-5. Saves you valuable time and money by streamlining your shopping process
 
-### Design and Development
-![Our_Strategy](images/model_progression.png)
+data_path = os.path.join("Resources/review_qa_df.csv")
+faiss_path = os.path.join("Resources/vectorst")
+st_faiss_indexname = os.path.join("Resources/vectorst/index.faiss")
 
-#### Overview
 
-* **Model Progression Pipeline**
-  * DistilBERT
-    * Achieves 98% accuracy for returning ratings
-    * Lower performance (19%) for returning reviews
-  * MiniLML6
-    * Uses Cosine Similarity with scores of 91% and 84%
-    * Identified as the highest rated and most durable in testing
-  * LLM-Mistral 8x7B
-    * Leverages large model capacity to remember past conversations
-    * Powers complex and contextual interactions
-   
-* **Core ZonBot Features**
-  * 🔄 Real-time Interactions for responsive user experience
-  * 🧠 Dual Model Logic combining lightweight and heavyweight models
-  * 🧬 Embeddings + FAISS for fast and accurate semantic search
-  * 🧭 Dynamic Model Routing to optimize model selection per task
-  * ⚡ Combined Speed & Depth via efficient model orchestration
-  * 🌍 Use of Real-World Data for higher relevancy and robustness
-  * 🧩 Modular & Expandable Design to support future enhancements
- 
-* **Key Technologies Used**
-  * 🔧 PyTorch – for custom model development and tuning
-  * 🌐 Streamlit – powering an interactive front-end UI
-  * 📚 Retrieval-Augmented Generation (RAG) – enhances responses with live document retrieval
-  * 🗃️ Vector Data Store – persistent, high-performance vector indexing for embeddings
+@st.cache_data
+def load_data(data_path):
+    data_path = os.path.join(data_path)
+    review_qa_df = pd.read_csv(data_path)
+    return review_qa_df
 
-#### Chatbot Workflow & User Interaction
+@st.cache_resource
+def load_model(model_path):
+    model_path = os.path.join(model_path)
+    model = SentenceTransformer(model_path)
+    return model
 
-![Our_Strategy](images/flow_chart.png)
+@st.cache_resource
+def load_faiss_index(st_faiss_indexname):
+    fais_index_st = faiss.read_index(st_faiss_indexname)
+    return fais_index_st
 
-* **User Query**
-  * User submits a natural language question via the chatbot interface.
-* **Text Preprocessing & Embedding**
-  * The query is cleaned, tokenized, and transformed into a dense vector using an embedding model.
-  * Ensures compatibility with the vector-based retrieval system.
-* **Vector Data Store**
-  * Embedded query is compared against a database of pre-embedded Amazon reviews using FAISS (Facebook AI Similarity Search).
-  * Enables fast and efficient similarity search.
-* **Top Relevant Reviews**
-  * The system retrieves the most semantically relevant reviews related to the user query.
-* **Dual Pathway Analysis**
-  * Left Path: Sentence Transformer (FAISS) - Uses a Sentence-Transformer model to interpret and extract the best-matching answers from the retrieved reviews.
-* **Right Path: Mistral 8x7B (RAG/FAISS)**
-  * Applies a Retrieval-Augmented Generation (RAG) approach using Mistral 8x7B.
-  * Integrates review context into generated responses for higher fluency and depth.
-* **Answer Selection & Response Formatting**
-  * Outputs from both models are evaluated and formatted into a coherent, context-aware response.
-* **ZonBot Final Response**
-  * The final answer is delivered to the user through the chatbot interface.
+# load_model = load_model(model_path)
+model = SentenceTransformer(model_path)
 
-### Modeling Process
+#- This code  generates embeddings - will run it only one time
+# - answer_texts: list of enriched answer strings
+# - answer_metadata: list of metadata dicts (same order as answer_texts)
+answer_texts = []
+answer_metadata = []
 
-1. **Load the CSV data file** containing Amazon reviews.
-2. **Load the API key** for accessing Hugging Face models.
-3. **Convert all records in the DataFrame into documents** using the load_docs function.
-4. **Define the path** for storing the vector database.
-5. **Store the document vectors incrementally** using the *store_incrementally_in_fiass* function.
-6. **Load the vector database and initialize the chat function** using the HuggingFaceEndpoint with the *mistralai/Mistral-7B-Instruct-v0.1* model as the LLM.
-7. **Create a question-answer retrieval chain** using the *langchain.chains* framework.
-8. **Use DistilBERT** *(DistilBertForQuestionAnswering)* as the first model for extracting answers from the documents.
-9. **Use Mistral-7B-Instruct-v0.1** as the second model for generating natural, context-aware responses.
-10. **Evaluate model performance** using the *F1 score* (balancing precision and recall) and the *BLEU score* (assessing language generation quality).
+# Load your full Q&A dataset, # Make sure this includes product_name, question, answer
+datapath = os.path.join("Resources/review_qa_df.csv")
+review_qa_df = load_data(datapath)
 
-### Modeling Optimization
-The downward trend in the training loss indicates that the model is improving its ability to fit the training data — it's making fewer mistakes.
-![Training_Loss](images/MiniLM_training_loss.png)
+for _, row in review_qa_df.iterrows():
+    product_name = row['product_title']
+    rating = row['rating']
+    answer = f"({product_name}, {rating}): {row['answer']}"
+    answer_texts.append(answer)
+    answer_metadata.append({
+        'product_id': row['product_id'],
+        'question': row['question'],
+        'rating': rating,
+        'product_name': product_name
+    })
 
-The model is making smaller updates over time, which typically suggests it's converging — it's gradually adjusting weights with less intensity. This is a good sign, especially early in training, as it reflects the model settling into a local or global minimum in the loss landscape.
-![Grad_Norm](images/model_grad_norm.png)
 
-The learning rate is steadily decreasing from about *2.95e-5* to around *2.73e-5* over the training steps. This is a classic learning rate decay schedule — usually done to help the model stabilize and fine-tune during training. That dip in gradient norm near step 2000 coincides with a lower learning rate, which is expected — as gradients shrink, updates are smaller.
-![Learning_Rate](images/model_learning_rate.png)
+faiss_index_st = load_faiss_index(st_faiss_indexname)
 
-### Running Instructions
+def st_process_user_query(user_query, top_k=1):
+    """
+    Handles both metadata-style queries and normal similarity search.
+    """
+    user_query = user_query.lower().strip()
 
-Getting Started with ZonBot (Amazon's Chatbot):
+    # ---------------------------
+    # 1. Handle rating questions
+    # ---------------------------
 
-1. Ensure that **Streamlit** is installed on your machine. You can install it using *pip install streamlit* if needed.
-2. **Download the entire repository** to your local machine for full functionality.
-3. The Resource files are ENORMOUS and do not fit on GitHub.  **Download the Resources directory**, and all of its contents, from our Google Drive. https://drive.google.com/drive/folders/1lhJ_R6L_CBbmKEIo9yVNMFvvQNazSDSv
-4. Make sure you **download Resource folder into the Project Repository** to insure that everything works properly. 
-5. Launch the app by running the **app.py** file. This is the main user interface and connects with both *LLMmodel.py* and *miniLMsentencetransformer.py* in the background.
-6. A **demonstration video** can be seen here: https://drive.google.com/drive/folders/1lhJ_R6L_CBbmKEIo9yVNMFvvQNazSDSv
-7. Please use your **HuggingfaceEndpoint APIKEY** for access
-8. Please refer to the **requirements.txt** file for the list of required libraries.
+    # Example: "what is the rating of Logitech mouse?"
+    if "rating" in user_query and "what" in user_query:
+        # Try to extract product name
+        for meta in answer_metadata:
+            if meta["product_name"].lower() in user_query:
+                product = meta["product_name"]
+                rating = meta["rating"]
+                return f"The rating for **{product}** is **{rating} stars**."
+        return "Sorry, I couldn't find the product you're asking about."
 
+    # Example: "only show answers for products above 4 stars"
+    rating_filter = None
+    match = re.search(r'above (\d(\.\d)?) stars?', user_query)
+    if match:
+        rating_filter = float(match.group(1))
+
+    # ------------------------------------
+    # 2. Embed and normalize user question
+    # ------------------------------------
+    user_embedding = model.encode([user_query], convert_to_numpy=True)
+    faiss.normalize_L2(user_embedding)
+
+    # ------------------------------------
+    # 3. Search with FAISS
+    # ------------------------------------
+    D, I = faiss_index_st.search(user_embedding, top_k)
+
+    results = []
+    for idx in I[0]:
+        meta = answer_metadata[idx]
+
+        # Apply optional rating filter
+        if rating_filter is not None and meta["rating"] < rating_filter:
+            continue
+
+        product = meta["product_name"]
+        rating = meta["rating"]
+        answer = answer_texts[idx]
+
+        result = f"**Product:** {product}\n**Rating:** {rating}\n**Answer:** {answer}"
+        results.append(result)
+
+    if not results:
+        return "I didn't find any answers that meet your rating criteria."
+    #can we return each result on a new line
+    return  "\n\n----\n\n".join(results)
 
